@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Expiry Tracker</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #22c55e;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 80px;
+    }
+    header {
+      background: var(--card);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      border-bottom: 1px solid #334155;
+    }
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    header .badge {
+      background: var(--accent);
+      color: #052e16;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+    .tabs {
+      display: flex;
+      background: var(--card);
+      border-bottom: 1px solid #334155;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .panel { display: none; padding: 16px; }
+    .panel.active { display: block; }
+
+    /* Scanner */
+    #reader {
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .scan-hint {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin: 12px 0 8px;
+    }
+    .manual-btn {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      margin: 12px auto 0;
+      padding: 12px;
+      background: #334155;
+      color: var(--text);
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Form modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: var(--card);
+      width: 100%;
+      max-width: 480px;
+      border-radius: 20px 20px 0 0;
+      padding: 20px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 11px 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1rem;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .product-preview {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: #0f172a;
+      padding: 10px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+    }
+    .product-preview img {
+      width: 64px;
+      height: 64px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: #1e293b;
+    }
+    .product-preview .name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .btn {
+      flex: 1;
+      padding: 13px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #052e16;
+    }
+    .btn-secondary {
+      background: #334155;
+      color: var(--text);
+    }
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    /* List */
+    .list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .list-header h2 {
+      font-size: 1.05rem;
+    }
+    .count {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .item-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      border-left: 4px solid transparent;
+    }
+    .item-card.expired { border-left-color: var(--danger); }
+    .item-card.soon { border-left-color: var(--warn); }
+    .item-card.ok { border-left-color: var(--accent); }
+    .item-card img {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: #0f172a;
+      flex-shrink: 0;
+    }
+    .item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .item-info .name {
+      font-weight: 600;
+      font-size: 0.95rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .item-info .meta {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .days {
+      font-weight: 800;
+      font-size: 1.05rem;
+      text-align: right;
+      min-width: 58px;
+    }
+    .days.expired { color: var(--danger); }
+    .days.soon { color: var(--warn); }
+    .days.ok { color: var(--accent); }
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+    }
+    .empty svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    /* Actions bar */
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .actions button {
+      flex: 1;
+      min-width: 120px;
+      padding: 10px;
+      background: #334155;
+      color: var(--text);
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .actions button:active { opacity: 0.8; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #22c55e;
+      color: #052e16;
+      padding: 10px 20px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.25s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Expiry Tracker</h1>
+    <span class="badge" id="itemCount">0 items</span>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="scan">Scan</div>
+    <div class="tab" data-tab="list">My Items</div>
+    <div class="tab" data-tab="data">Import / Export</div>
+  </div>
+
+  <!-- SCAN PANEL -->
+  <div class="panel active" id="panel-scan">
+    <div id="scanStartArea" style="text-align:center; padding: 24px 10px;">
+      <div style="font-size:3rem; margin-bottom:12px;">📷</div>
+      <p style="color:var(--muted); margin-bottom:16px; font-size:0.95rem; line-height:1.4;">
+        Press the button to open camera<br>
+        <span style="font-size:0.8rem;">(Works best on phone + Chrome/Safari)</span>
+      </p>
+      <button class="btn btn-primary" style="width:100%; max-width:320px; margin:0 auto 12px;" onclick="startScanner()">
+        Start Camera Scan
+      </button>
+      <div id="cameraError" style="display:none; background:#7f1d1d; color:#fecaca; padding:12px; border-radius:10px; font-size:0.85rem; margin-top:12px; text-align:left; line-height:1.45;"></div>
+    </div>
+    <div id="reader" style="display:none; width:100%; max-width:420px; margin:0 auto;"></div>
+    <button class="manual-btn" id="stopScanBtn" style="display:none; background:#7f1d1d; margin-top:12px;" onclick="stopScannerUI()">
+      Stop Camera
+    </button>
+    <button class="manual-btn" onclick="openManualForm()">+ Add manually (no camera)</button>
+  </div>
+
+  <!-- LIST PANEL -->
+  <div class="panel" id="panel-list">
+    <div class="list-header">
+      <h2>Tracked items</h2>
+      <span class="count" id="listCount">0</span>
+    </div>
+    <div id="itemList"></div>
+  </div>
+
+  <!-- DATA PANEL -->
+  <div class="panel" id="panel-data">
+    <div class="actions">
+      <button onclick="exportExcel()">⬇ Export Excel</button>
+      <button onclick="document.getElementById('importFile').click()">⬆ Import Excel</button>
+      <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importExcel(event)" />
+    </div>
+    <p style="color:var(--muted);font-size:0.85rem;line-height:1.5">
+      Export creates an Excel file with Name, Barcode, Expiry Date, Days Left, Image URL.<br>
+      Import accepts the same columns (Name + Expiry Date required).
+    </p>
+    <button class="manual-btn" style="margin-top:20px;background:#7f1d1d" onclick="clearAll()">Clear all data</button>
+  </div>
+
+  <!-- ADD / EDIT MODAL -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <h2 id="modalTitle">Add item</h2>
+      <div class="product-preview" id="preview" style="display:none">
+        <img id="previewImg" src="" alt="" />
+        <div>
+          <div class="name" id="previewName"></div>
+          <div style="font-size:0.75rem;color:var(--muted)" id="previewBarcode"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Product name *</label>
+        <input type="text" id="fName" placeholder="e.g. Milk 1L" />
+      </div>
+      <div class="form-group">
+        <label>Barcode (optional)</label>
+        <input type="text" id="fBarcode" placeholder="Scanned or typed" />
+      </div>
+      <div class="form-group">
+        <label>Expiry date *</label>
+        <input type="date" id="fExpiry" />
+      </div>
+      <div class="form-group">
+        <label>Image URL (optional)</label>
+        <input type="url" id="fImage" placeholder="https://..." />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveItem()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ========== STORAGE ==========
+    const STORAGE_KEY = 'expiryTracker_v1';
+    let items = [];
+    let editingId = null;
+
+    function loadItems() {
+      try {
+        items = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      } catch {
+        items = [];
+      }
+      updateUI();
+    }
+
+    function saveItems() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      updateUI();
+    }
+
+    // ========== DAYS LEFT ==========
+    function daysLeft(expiryStr) {
+      if (!expiryStr) return null;
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const exp = new Date(expiryStr);
+      exp.setHours(0,0,0,0);
+      return Math.round((exp - today) / 86400000);
+    }
+
+    function statusClass(days) {
+      if (days === null) return 'ok';
+      if (days < 0) return 'expired';
+      if (days <= 7) return 'soon';
+      return 'ok';
+    }
+
+    function formatDays(days) {
+      if (days === null) return '—';
+      if (days < 0) return days + 'd';
+      if (days === 0) return 'Today';
+      return days + 'd';
+    }
+
+    // ========== UI ==========
+    function updateUI() {
+      // sort by days left ascending
+      items.sort((a, b) => {
+        const da = daysLeft(a.expiry) ?? 9999;
+        const db = daysLeft(b.expiry) ?? 9999;
+        return da - db;
+      });
+
+      document.getElementById('itemCount').textContent = items.length + ' items';
+      document.getElementById('listCount').textContent = items.length;
+
+      const list = document.getElementById('itemList');
+      if (items.length === 0) {
+        list.innerHTML = `
+          <div class="empty">
+            <div style="font-size:2rem">📦</div>
+            <p>No items yet</p>
+            <p style="font-size:0.85rem;margin-top:6px">Scan a barcode or add manually</p>
+          </div>`;
+        return;
+      }
+
+      list.innerHTML = items.map(item => {
+        const d = daysLeft(item.expiry);
+        const cls = statusClass(d);
+        const img = item.image || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" fill="%23334155"><rect width="56" height="56" rx="8"/><text x="28" y="34" text-anchor="middle" fill="%2394a3b8" font-size="20">📦</text></svg>';
+        return `
+          <div class="item-card ${cls}" onclick="editItem('${item.id}')">
+            <img src="${img}" alt="" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'56\\' height=\\'56\\' fill=\\'%23334155\\'><rect width=\\'56\\' height=\\'56\\' rx=\\'8\\'/></svg>'" />
+            <div class="item-info">
+              <div class="name">${escapeHtml(item.name)}</div>
+              <div class="meta">${item.expiry || 'No date'} ${item.barcode ? '· ' + item.barcode : ''}</div>
+            </div>
+            <div class="days ${cls}">${formatDays(d)}</div>
+          </div>`;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      })[m]);
+    }
+
+    // ========== TABS ==========
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+
+        // stop camera when leaving scan tab
+        if (tab.dataset.tab !== 'scan') {
+          stopScannerUI();
+        }
+      });
+    });
+
+    // ========== SCANNER ==========
+    let html5QrCode = null;
+
+    async function startScanner() {
+      const errorBox = document.getElementById('cameraError');
+      errorBox.style.display = 'none';
+      errorBox.innerHTML = '';
+
+      // Check if we are on file:// (this is the main problem)
+      if (window.location.protocol === 'file:') {
+        errorBox.style.display = 'block';
+        errorBox.innerHTML = `
+          <strong>Camera blocked</strong><br><br>
+          You opened the file directly. Browsers block camera on local files.<br><br>
+          <strong>Easy fix:</strong><br>
+          1. Upload this file to any free host (or send to yourself on WhatsApp)<br>
+          2. Open the link from the browser<br>
+          3. Or use a local server (see instructions below)
+        `;
+        return;
+      }
+
+      try {
+        // hide start button, show camera area
+        document.getElementById('scanStartArea').style.display = 'none';
+        document.getElementById('reader').style.display = 'block';
+        document.getElementById('stopScanBtn').style.display = 'block';
+
+        html5QrCode = new Html5Qrcode("reader");
+
+        const cameras = await Html5Qrcode.getCameras();
+        if (!cameras || cameras.length === 0) {
+          throw new Error("No camera found on this device");
+        }
+
+        // Prefer back camera on phones
+        let cameraId = cameras[0].id;
+        const backCam = cameras.find(c => /back|rear|environment/i.test(c.label));
+        if (backCam) cameraId = backCam.id;
+
+        await html5QrCode.start(
+          cameraId,
+          {
+            fps: 12,
+            qrbox: { width: 280, height: 160 },
+            aspectRatio: 1.777
+          },
+          onScanSuccess,
+          () => {} // ignore continuous scan errors
+        );
+
+      } catch (err) {
+        console.error(err);
+        stopScannerUI();
+        errorBox.style.display = 'block';
+        errorBox.innerHTML = `
+          <strong>Could not open camera</strong><br><br>
+          ${err.message || err}<br><br>
+          Common reasons:<br>
+          • You must allow camera permission<br>
+          • File opened as local file (file://) → blocked<br>
+          • No camera available<br>
+          • Browser does not support it
+        `;
+      }
+    }
+
+    function stopScanner() {
+      if (html5QrCode) {
+        html5QrCode.stop().catch(() => {});
+        html5QrCode.clear();
+        html5QrCode = null;
+      }
+    }
+
+    function stopScannerUI() {
+      stopScanner();
+      const reader = document.getElementById('reader');
+      reader.style.display = 'none';
+      reader.innerHTML = '';
+      document.getElementById('stopScanBtn').style.display = 'none';
+      document.getElementById('scanStartArea').style.display = 'block';
+    }
+
+    async function onScanSuccess(decodedText) {
+      // stop camera after successful scan
+      stopScannerUI();
+      showToast('Barcode: ' + decodedText);
+
+      // try Open Food Facts
+      let name = '';
+      let image = '';
+      try {
+        const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${decodedText}.json`, {
+          headers: { 'User-Agent': 'ExpiryTracker/1.0 (web app)' }
+        });
+        const data = await res.json();
+        if (data.status === 1 && data.product) {
+          name = data.product.product_name || data.product.product_name_en || '';
+          image = data.product.image_front_small_url || data.product.image_url || '';
+        }
+      } catch (e) {
+        console.log('Lookup failed', e);
+      }
+
+      openForm({
+        barcode: decodedText,
+        name: name,
+        image: image
+      });
+    }
+
+    // ========== FORM ==========
+    function openManualForm() {
+      openForm({});
+    }
+
+    function openForm(data = {}) {
+      editingId = data.id || null;
+      document.getElementById('modalTitle').textContent = editingId ? 'Edit item' : 'Add item';
+      document.getElementById('fName').value = data.name || '';
+      document.getElementById('fBarcode').value = data.barcode || '';
+      document.getElementById('fExpiry').value = data.expiry || '';
+      document.getElementById('fImage').value = data.image || '';
+
+      const preview = document.getElementById('preview');
+      if (data.name || data.image) {
+        preview.style.display = 'flex';
+        document.getElementById('previewName').textContent = data.name || 'Unknown product';
+        document.getElementById('previewBarcode').textContent = data.barcode || '';
+        document.getElementById('previewImg').src = data.image || '';
+      } else {
+        preview.style.display = 'none';
+      }
+
+      document.getElementById('modal').classList.add('show');
+      // set default expiry to +30 days if empty
+      if (!data.expiry) {
+        const d = new Date();
+        d.setDate(d.getDate() + 30);
+        document.getElementById('fExpiry').value = d.toISOString().slice(0, 10);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('show');
+      editingId = null;
+      // do not auto-restart camera
+    }
+
+    function saveItem() {
+      const name = document.getElementById('fName').value.trim();
+      const barcode = document.getElementById('fBarcode').value.trim();
+      const expiry = document.getElementById('fExpiry').value;
+      const image = document.getElementById('fImage').value.trim();
+
+      if (!name) {
+        alert('Please enter a product name');
+        return;
+      }
+      if (!expiry) {
+        alert('Please set an expiry date');
+        return;
+      }
+
+      if (editingId) {
+        const idx = items.findIndex(i => i.id === editingId);
+        if (idx !== -1) {
+          items[idx] = { ...items[idx], name, barcode, expiry, image };
+        }
+      } else {
+        items.push({
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+          name,
+          barcode,
+          expiry,
+          image,
+          added: new Date().toISOString().slice(0, 10)
+        });
+      }
+
+      saveItems();
+      closeModal();
+      showToast('Saved!');
+      // switch to list
+      document.querySelector('[data-tab="list"]').click();
+    }
+
+    function editItem(id) {
+      const item = items.find(i => i.id === id);
+      if (item) openForm(item);
+    }
+
+    // ========== EXCEL ==========
+    function exportExcel() {
+      if (items.length === 0) {
+        alert('No items to export');
+        return;
+      }
+      const rows = items.map(i => ({
+        Name: i.name,
+        Barcode: i.barcode || '',
+        'Expiry Date': i.expiry,
+        'Days Left': daysLeft(i.expiry),
+        'Image URL': i.image || '',
+        Added: i.added || ''
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Expiry Tracker');
+      XLSX.writeFile(wb, `expiry-tracker-${new Date().toISOString().slice(0,10)}.xlsx`);
+      showToast('Exported!');
+    }
+
+    function importExcel(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          const data = new Uint8Array(ev.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet);
+
+          let added = 0;
+          rows.forEach(row => {
+            const name = row.Name || row.name || row.Product || row.product;
+            const expiry = row['Expiry Date'] || row.Expiry || row.expiry || row['expiry date'];
+            if (!name || !expiry) return;
+
+            // normalize date
+            let expStr = String(expiry);
+            if (expStr.includes('/')) {
+              // try MM/DD/YYYY or DD/MM/YYYY → ISO
+              const parts = expStr.split('/');
+              if (parts.length === 3) {
+                expStr = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+              }
+            }
+
+            items.push({
+              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+              name: String(name),
+              barcode: String(row.Barcode || row.barcode || ''),
+              expiry: expStr.slice(0, 10),
+              image: String(row['Image URL'] || row.image || ''),
+              added: new Date().toISOString().slice(0, 10)
+            });
+            added++;
+          });
+
+          saveItems();
+          showToast(`Imported ${added} items`);
+          document.querySelector('[data-tab="list"]').click();
+        } catch (err) {
+          alert('Import failed: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      e.target.value = '';
+    }
+
+    function clearAll() {
+      if (confirm('Delete ALL items? This cannot be undone.')) {
+        items = [];
+        saveItems();
+        showToast('Cleared');
+      }
+    }
+
+    // ========== TOAST ==========
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    // ========== INIT ==========
+    loadItems();
+    // Camera does NOT start automatically – user must press the button
+  </script>
+</body>
+</html>
